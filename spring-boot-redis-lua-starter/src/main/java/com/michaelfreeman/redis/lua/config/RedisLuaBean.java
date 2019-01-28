@@ -44,152 +44,160 @@ import java.util.regex.Pattern;
 @Configuration
 public class RedisLuaBean implements BeanFactoryPostProcessor, ApplicationContextAware {
 
-	private static Logger logger = LoggerFactory.getLogger(RedisLuaBean.class);
+    private static Logger logger = LoggerFactory.getLogger(RedisLuaBean.class);
 
-	private ApplicationContext applicationContext;
+    private ApplicationContext applicationContext;
 
-	@SuppressWarnings("rawtypes")
-	private static RedisTemplate redisTemplate;
+    private static RedisTemplate redisTemplate;
 
-	private String[] scanPackage;
+    private String[] scanPackage;
 
-    @SuppressWarnings("rawtypes")
-	@Override
-	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-		redisTemplate = (RedisTemplate) applicationContext.getBean("redisTemplate");
-		Assert.notNull(redisTemplate);
-		this.applicationContext = applicationContext;
-	}
+    private String redisTemplateName;
 
-	@Override
-	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
-		Scanner scanner = new Scanner((BeanDefinitionRegistry) beanFactory);
-		scanner.setResourceLoader(this.applicationContext);
-		scanner.scan(getPackage());
-	}
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        redisTemplate = applicationContext.getBean(getRedisTemplateName(), RedisTemplate.class);
+        Assert.notNull(redisTemplate, "redisTemplate can not be null");
+        this.applicationContext = applicationContext;
+    }
 
-	public final static class Scanner extends ClassPathBeanDefinitionScanner {
-		public Scanner(BeanDefinitionRegistry registry) {
-			super(registry);
-		}
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+        Scanner scanner = new Scanner((BeanDefinitionRegistry) beanFactory);
+        scanner.setResourceLoader(this.applicationContext);
+        scanner.scan(getPackage());
+    }
 
-		@Override
-		public void registerDefaultFilters() {
-			this.addIncludeFilter(new AnnotationTypeFilter(RedisLua.class));
-		}
+    public final static class Scanner extends ClassPathBeanDefinitionScanner {
+        public Scanner(BeanDefinitionRegistry registry) {
+            super(registry);
+        }
 
-		@Override
-		public Set<BeanDefinitionHolder> doScan(String... basePackages) {
-			Set<BeanDefinitionHolder> beanDefinitions = super.doScan(basePackages);
-			for (BeanDefinitionHolder holder : beanDefinitions) {
-				GenericBeanDefinition definition = (GenericBeanDefinition) holder.getBeanDefinition();
-				definition.getPropertyValues().add("innerClassName", definition.getBeanClassName());
-				definition.setBeanClass(RedisLuaFactoryBean.class);
-			}
-			return beanDefinitions;
-		}
+        @Override
+        public void registerDefaultFilters() {
+            this.addIncludeFilter(new AnnotationTypeFilter(RedisLua.class));
+        }
 
-		@Override
-		public boolean isCandidateComponent(AnnotatedBeanDefinition beanDefinition) {
-			return beanDefinition.getMetadata().hasAnnotation(RedisLua.class.getName());
-		}
-	}
+        @Override
+        public Set<BeanDefinitionHolder> doScan(String... basePackages) {
+            Set<BeanDefinitionHolder> beanDefinitions = super.doScan(basePackages);
+            for (BeanDefinitionHolder holder : beanDefinitions) {
+                GenericBeanDefinition definition = (GenericBeanDefinition) holder.getBeanDefinition();
+                definition.getPropertyValues().add("innerClassName", definition.getBeanClassName());
+                definition.setBeanClass(RedisLuaFactoryBean.class);
+            }
+            return beanDefinitions;
+        }
 
-	public static class RedisLuaFactoryBean<T> implements InitializingBean, FactoryBean<T> {
+        @Override
+        public boolean isCandidateComponent(AnnotatedBeanDefinition beanDefinition) {
+            return beanDefinition.getMetadata().hasAnnotation(RedisLua.class.getName());
+        }
+    }
 
-		private String innerClassName;
+    public static class RedisLuaFactoryBean<T> implements InitializingBean, FactoryBean<T> {
 
-		public void setInnerClassName(String innerClassName) {
-			this.innerClassName = innerClassName;
-		}
+        private String innerClassName;
 
-		@SuppressWarnings({ "rawtypes", "unchecked" })
-		@Override
-		public T getObject() throws Exception {
-			Class innerClass = Class.forName(innerClassName);
-			if (innerClass.isInterface()) {
-				return (T) InterfaceProxy.newInstance(innerClass);
-			} else {
-				Enhancer enhancer = new Enhancer();
-				enhancer.setSuperclass(innerClass);
-				enhancer.setNamingPolicy(SpringNamingPolicy.INSTANCE);
-				enhancer.setCallback(new MethodInterceptorImpl());
-				return (T) enhancer.create();
-			}
-		}
+        public void setInnerClassName(String innerClassName) {
+            this.innerClassName = innerClassName;
+        }
 
-		@Override
-		public Class<?> getObjectType() {
-			try {
-				if (null == innerClassName)
-					return null;
-				return Class.forName(innerClassName);
-			} catch (ClassNotFoundException e) {
-				logger.error(e.getMessage());
-			}
-			return null;
-		}
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        @Override
+        public T getObject() throws Exception {
+            Class innerClass = Class.forName(innerClassName);
+            if (innerClass.isInterface()) {
+                return (T) InterfaceProxy.newInstance(innerClass);
+            } else {
+                Enhancer enhancer = new Enhancer();
+                enhancer.setSuperclass(innerClass);
+                enhancer.setNamingPolicy(SpringNamingPolicy.INSTANCE);
+                enhancer.setCallback(new MethodInterceptorImpl());
+                return (T) enhancer.create();
+            }
+        }
 
-		@Override
-		public boolean isSingleton() {
-			return true;
-		}
+        @Override
+        public Class<?> getObjectType() {
+            try {
+                if (null == innerClassName)
+                    return null;
+                return Class.forName(innerClassName);
+            } catch (ClassNotFoundException e) {
+                logger.error(e.getMessage());
+            }
+            return null;
+        }
 
-		@Override
-		public void afterPropertiesSet() throws Exception {
-		}
-	}
+        @Override
+        public boolean isSingleton() {
+            return true;
+        }
 
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	static Object invocation(Object proxy, Method method, Object[] arguments, MethodProxy methodProxy)
-			throws Throwable {
-		if (!method.isAnnotationPresent(RedisLua.class)) {
-			if (Modifier.isAbstract(method.getModifiers()))
-				return method.getReturnType().isPrimitive() ? Defaults.defaultValue(method.getReturnType()) : null;
-			return null != methodProxy ? methodProxy.invokeSuper(proxy, arguments) : method.invoke(proxy, arguments);
-		}
-		RedisLua redisLua = method.getDeclaredAnnotation(RedisLua.class);
-		Class<?> resultType = method.getReturnType();
-		// keys
-		int keysCount = redisLua.keysCount();
-		List<Object> keys = new ArrayList<Object>(keysCount);
-		Collections.addAll(keys, Arrays.copyOfRange(arguments, 0, keysCount));
-		// args
-		int argsCount = redisLua.argsCount();
-		Object[] args = (argsCount > 0 && keysCount + 1 <= arguments.length)
-				? Arrays.copyOfRange(arguments, keysCount , argsCount + keysCount ) : new Object[] {};
-		return redisTemplate.execute(new DefaultRedisScript(redisLua.lua(), resultType), keys, args);
-	}
+        @Override
+        public void afterPropertiesSet() throws Exception {
+        }
+    }
 
-	public static class InterfaceProxy implements InvocationHandler {
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    static Object invocation(Object proxy, Method method, Object[] arguments, MethodProxy methodProxy)
+            throws Throwable {
+        if (!method.isAnnotationPresent(RedisLua.class)) {
+            if (Modifier.isAbstract(method.getModifiers()))
+                return method.getReturnType().isPrimitive() ? Defaults.defaultValue(method.getReturnType()) : null;
+            return null != methodProxy ? methodProxy.invokeSuper(proxy, arguments) : method.invoke(proxy, arguments);
+        }
+        RedisLua redisLua = method.getDeclaredAnnotation(RedisLua.class);
+        Class<?> resultType = method.getReturnType();
+        // keys
+        int keysCount = redisLua.keysCount();
+        List<Object> keys = new ArrayList<Object>(keysCount);
+        Collections.addAll(keys, Arrays.copyOfRange(arguments, 0, keysCount));
+        // args
+        int argsCount = redisLua.argsCount();
+        Object[] args = (argsCount > 0 && keysCount + 1 <= arguments.length)
+                ? Arrays.copyOfRange(arguments, keysCount, argsCount + keysCount) : new Object[]{};
+        return redisTemplate.execute(new DefaultRedisScript(redisLua.lua(), resultType), keys, args);
+    }
 
-		@Override
-		public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
-			return invocation(proxy, method, arguments, null);
-		}
+    public static class InterfaceProxy implements InvocationHandler {
 
-		@SuppressWarnings({ "unchecked", "rawtypes" })
-		static <T> T newInstance(Class<T> innerInterface) {
-			ClassLoader classLoader = innerInterface.getClassLoader();
-			Class[] interfaces = new Class[] { innerInterface };
-			InterfaceProxy proxy = new InterfaceProxy();
-			return (T) Proxy.newProxyInstance(classLoader, interfaces, proxy);
-		}
-	}
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
+            return invocation(proxy, method, arguments, null);
+        }
 
-	public static class MethodInterceptorImpl implements MethodInterceptor {
-		@Override
-		public Object intercept(Object proxy, Method method, Object[] objects, MethodProxy methodProxy)
-				throws Throwable {
-			return invocation(proxy, method, objects, methodProxy);
-		}
-	}
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        static <T> T newInstance(Class<T> innerInterface) {
+            ClassLoader classLoader = innerInterface.getClassLoader();
+            Class[] interfaces = new Class[]{innerInterface};
+            InterfaceProxy proxy = new InterfaceProxy();
+            return (T) Proxy.newProxyInstance(classLoader, interfaces, proxy);
+        }
+    }
 
-	public String[] getPackage() {
-		return scanPackage;
-	}
+    public static class MethodInterceptorImpl implements MethodInterceptor {
+        @Override
+        public Object intercept(Object proxy, Method method, Object[] objects, MethodProxy methodProxy)
+                throws Throwable {
+            return invocation(proxy, method, objects, methodProxy);
+        }
+    }
 
-	public void setPackage(String[] scanPackage) {
-		this.scanPackage = scanPackage;
-	}
+    public String[] getPackage() {
+        return scanPackage;
+    }
+
+    public void setPackage(String[] scanPackage) {
+        this.scanPackage = scanPackage;
+    }
+
+    public String getRedisTemplateName() {
+        return redisTemplateName;
+    }
+
+    public void setRedisTemplateName(String redisTemplateName) {
+        this.redisTemplateName = redisTemplateName;
+    }
 }

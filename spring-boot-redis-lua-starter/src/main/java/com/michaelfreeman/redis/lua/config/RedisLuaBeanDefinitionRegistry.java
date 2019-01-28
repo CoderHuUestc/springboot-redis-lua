@@ -62,6 +62,10 @@ public class RedisLuaBeanDefinitionRegistry implements ImportBeanDefinitionRegis
                 if (ArrayUtils.isNotEmpty(packages)) {
                     beanDefinition.getPropertyValues().add("package", packages);
                 }
+                String redisTempateBeanName = (String) attributes.get("redisTemplateName");
+                if (StringUtils.isNotBlank(redisTempateBeanName)) {
+                    beanDefinition.getPropertyValues().add("redisTemplateName", redisTempateBeanName);
+                }
             }
         }
 

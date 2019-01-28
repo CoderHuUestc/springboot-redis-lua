@@ -18,5 +18,13 @@ import java.lang.annotation.Target;
 @Import(RedisLuaBeanDefinitionRegistry.class)
 public @interface RedisLuaConfiguration {
 
+    /**
+     * 需要扫描的包路径
+     */
     String[] packages() default {"com.michaelfreeman.redis.lua"};
+
+    /**
+     * RedisTemplate bean名称
+     */
+    String redisTemplateName() default "redisTemplate";
 }
