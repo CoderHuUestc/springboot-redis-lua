@@ -1,0 +1,27 @@
+# IntelliJ IDEA Project files
+.idea
+*.iml
+.project
+.classpath
+
+# Logger
+logs/
+*.log
+
+# MacOS
+.DS_Store
+
+# Application Runtime
+target/
+
+# Other
+
+*.versionsBackup
+
+# Debug
+CrackBean.java
+CrackMisAuthFilter.java
+
+# jenv
+.java-version
+docs/
