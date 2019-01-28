@@ -2,6 +2,7 @@ package test;
 
 import com.michaelfreeman.redis.lua.test.Application;
 import com.michaelfreeman.redis.lua.test.TestService;
+import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,6 @@ public class RedisLuaTest {
 
     @Test
     public void test2() {
-        System.out.println("michael   " + testService.testExist("param", "111"));
+        Assert.assertEquals("1",testService.testExist("param", "111"));
     }
 }
